@@ -1,0 +1,29 @@
+# Node modules
+node_modules/
+
+.env*
+!.env.example
+
+# Logs
+logs/
+*.log
+
+# Build
+dist/
+build/
+coverage/
+.nyc_output/
+
+# Playwright test
+playwright-report/
+test-results/
+.playwright/
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+

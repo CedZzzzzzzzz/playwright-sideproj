@@ -1,0 +1,21 @@
+[
+  {
+    "name": "Vercel",
+    "urls": [
+      { "label": "pricing", "url": "https://vercel.com/pricing" },
+      { "label": "changelog", "url": "https://vercel.com/changelog" }
+    ]
+  },
+  {
+    "name": "Netlify",
+    "urls": [
+      { "label": "pricing", "url": "https://www.netlify.com/pricing/" }
+    ]
+  },
+  {
+    "name": "Railway",
+    "urls": [
+      { "label": "pricing", "url": "https://railway.app/pricing" }
+    ]
+  }
+]

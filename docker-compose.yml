@@ -1,0 +1,25 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-monitoring
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+  monitor:
+    build: .
+    depends_on:
+      - ollama
+    env_file:
+      - .env
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    volumes:
+      - ./logs:/app/logs
+      - ./targets.json:/app/targets.json
+    restart: unless-stopped
+
+volumes:
+  ollama_data:

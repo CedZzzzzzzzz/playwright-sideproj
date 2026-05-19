@@ -1,0 +1,18 @@
+{
+    "name": "playwright-sideproj",
+    "version": "1.0.0",
+    "description": "A side project to implement playwright with AI integration",
+    "main": "src/index.js",
+    "type": "module",
+    "scripts": {
+        "start": "node src/index.js",
+        "run-now": "node src/index.js --now",
+        "test": "node src/index.js --now --dry-run"
+    },
+    "dependencies": {
+        "playwright": "^1.60.0",
+        "node-cron": "^4.2.1",
+        "diff": "^5.2.0",
+        "dotenv": "^16.4.5"
+    }
+}
