@@ -1,6 +1,6 @@
 # Patch Notes Monitor
 
-Daily digest for **BaaS and database changelog pages** (Supabase, MongoDB, Firebase, Appwrite, etc.). The tool scrapes official release pages, detects when something new was published, and writes a short **3-sentence summary** per platform.
+Daily digest for **BaaS and database changelog pages** (Supabase, MongoDB, Firebase, Appwrite, etc.). The tool scrapes official release pages, detects when something new was published, and writes a short **3-bullet summary** per platform.
 
 Summaries can run in three modes:
 
@@ -10,7 +10,7 @@ Summaries can run in three modes:
 | `hybrid` | Only on **new** patches | **Recommended** for daily use |
 | `ai` | Every run | Best prose, slowest |
 
-**Local AI** runs entirely in Docker via [Ollama](https://ollama.com/) — no cloud API keys required. Nothing is sent to an external LLM unless you add that yourself later.
+**Local AI** runs entirely in Docker via [Ollama](https://ollama.com/) — no cloud API keys required.
 
 ---
 
@@ -27,12 +27,12 @@ Summaries can run in three modes:
 ## Prerequisites
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows/Mac/Linux)
-- **~8 GB RAM** minimum if using Ollama (`hybrid` / `ai`); `fast` mode is lighter
+- **8 GB RAM** minimum if using Ollama (`hybrid` / `ai`); `fast` mode is lighter
 - Internet access from Docker (to reach changelog URLs)
 
 ---
 
-## Quick start (for reviewers / your lead)
+## Quick start
 
 ### 1. Clone and configure
 
@@ -103,8 +103,6 @@ Expect **2–10 minutes** depending on network and `SUMMARY_MODE`.
 
 ## Testing without local AI (fastest path)
 
-If your lead only wants to verify scraping + UI **without** Ollama:
-
 1. Set `SUMMARY_MODE=fast` in `.env`
 2. `docker compose up --build -d` (Ollama still starts but is unused)
 3. `docker compose exec monitor node src/index.js --now --fresh`
@@ -133,35 +131,7 @@ On a **second run the same day** with no changelog changes, expect `Cache hit` a
 
 ---
 
-## Common commands
 
-```bash
-# Start everything
-docker compose up -d
-
-# Rebuild after code changes
-docker compose up --build -d
-
-# Run pipeline now
-docker compose exec monitor node src/index.js --now
-
-# Force full re-scrape + new summaries
-docker compose exec monitor node src/index.js --now --fresh
-
-# Scrape only (no summaries, quick smoke test)
-docker compose exec monitor node src/index.js --now --dry-run
-
-# Check Ollama models
-docker compose exec ollama ollama list
-
-# View monitor logs
-docker compose logs -f monitor
-
-# Stop everything
-docker compose down
-```
-
----
 
 ## Configuration
 
@@ -178,47 +148,14 @@ Edit **`targets.json`** to add/remove platforms or fix changelog URLs.
 
 ---
 
-## Project layout
-
-```text
-src/
-  index.js           # Entry: cron + --now / --fresh / --dry-run
-  scraper.js         # Playwright changelog scraping
-  differ.js          # Detect new patches vs previous day
-  summarizer.js      # fast / hybrid / ai routing + cache
-  ollama-summarize.js# Local LLM calls
-  extractive.js      # No-AI summaries
-  reporter.js        # report.md + report.json
-  server.js          # Dashboard API
-ui/                  # Web dashboard (HTML/CSS/JS)
-logs/                # Reports + snapshots (gitignored)
-targets.json         # Platforms to monitor
-docker-compose.yml   # ollama + monitor + dashboard
-```
-
----
-
 ## Troubleshooting
 
 | Problem | What to try |
 |---------|-------------|
 | `EADDRINUSE` on port 3000 | Another UI instance running; stop it or change `UI_PORT` |
-| Scrape timeouts / `ERR_NAME_NOT_RESOLVED` | Docker DNS/network; restart Docker; set `SCRAPE_CONCURRENCY=1` |
+| Scrape timeouts / `ERR_NAME_NOT_RESOLVED` | Docker DNS/network; restart Docker |
 | Only 2 platforms in report | Some scrapes failed — check Step 1 logs; re-run with `--fresh` |
 | Always says `(fast)` in hybrid | Normal if **no new patch** today; use `--fresh` on first run or wait for a real changelog update |
-| Ollama `model not found` | Run `docker compose exec ollama ollama pull llama3.2:1b` |
-| Slow on 8 GB RAM | Use `SUMMARY_MODE=fast` or `hybrid`; avoid `ai` |
+| Ollama `model not found` | Run `docker compose exec ollama ollama pull (ollama model to be used)` |
 
 ---
-
-## Security note
-
-- Changelog pages are fetched **from inside the monitor container** (outbound HTTPS only).
-- **Ollama runs locally** in Docker; scraped text is sent to `http://ollama:11434` on the Docker network, not to the public internet.
-- Do not commit `.env` or `logs/` (both are gitignored).
-
----
-
-## License
-
-Internal / side project — adjust as needed for your organization.
