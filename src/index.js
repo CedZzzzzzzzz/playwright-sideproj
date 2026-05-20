@@ -11,6 +11,7 @@ const TARGETS_FILE = '/app/targets.json';
 const args = process.argv.slice(2);
 const RUN_NOW = args.includes('--now');
 const DRY_RUN = args.includes('--dry-run');
+const FRESH = args.includes('--fresh');
 
 async function loadTargets() {
   const raw = await fs.readFile(TARGETS_FILE, 'utf-8');
@@ -18,15 +19,26 @@ async function loadTargets() {
 }
 
 async function run() {
-  console.log(`Competitive Monitor — ${new Date().toISOString()}\n`);
+  console.log(`Patch Notes Monitor — ${new Date().toISOString()}\n`);
 
   let targets;
   try {
     targets = await loadTargets();
-    console.log(`[index] Loaded ${targets.length} competitor(s) from targets.json`);
+    console.log(`[index] Loaded ${targets.length} platform(s) from targets.json`);
   } catch (err) {
     console.error(`[index] Failed to load targets.json: ${err.message}`);
     return;
+  }
+
+  if (FRESH) {
+    process.env.SNAPSHOT_REFRESH = 'true';
+    console.log('[index] --fresh: re-scraping all changelog pages today.');
+    try {
+      await fs.rm('/app/logs/state', { recursive: true, force: true });
+      console.log('[index] Cleared cached summaries (logs/state).');
+    } catch {
+      /* no cache yet */
+    }
   }
 
   if (DRY_RUN) {
@@ -36,26 +48,19 @@ async function run() {
     return;
   }
 
-  // Step 1: Scrape
-  console.log('\n[index] Step 1/4 — Scraping...');
+  console.log('\n[index] Step 1/4 — Scraping changelog pages...');
   const scrapeResults = await scrapeAll(targets);
 
-  // Step 2: Diff
-  console.log('\n[index] Step 2/4 — Diffing snapshots...');
-  const diffs = await diffAll(scrapeResults);
-  console.log(`[index] ${diffs.length} page(s) with changes.`);
+  console.log('\n[index] Step 2/4 — Detecting new patches...');
+  const diffResults = await diffAll(scrapeResults);
+  const newPatches = diffResults.filter((d) => d.hasNewPatch).length;
+  console.log(`[index] ${diffResults.length} platform(s) checked, ${newPatches} new patch(es).`);
 
-  if (diffs.length === 0) {
-    console.log('[index] Nothing changed. Exiting early.');
-    return;
-  }
+  const mode = process.env.SUMMARY_MODE || 'fast';
+  console.log(`\n[index] Step 3/4 — Summarizing (mode: ${mode})...`);
+  const summaries = await summarizeAll(diffResults);
 
-  // Step 3: Summarize with Ollama
-  console.log('\n[index] Step 3/4 — Summarizing with Ollama...');
-  const summaries = await summarizeAll(diffs);
-
-  // Step 4: Report
-  console.log('\n[index] Step 4/4 — Generating report...');
+  console.log('\n[index] Step 4/4 — Writing daily digest...');
   await report(summaries);
 
   console.log('\n✅ Run complete.\n');

@@ -1,21 +1,74 @@
 [
   {
-    "name": "Vercel",
+    "name": "Appwrite",
     "urls": [
-      { "label": "pricing", "url": "https://vercel.com/pricing" },
-      { "label": "changelog", "url": "https://vercel.com/changelog" }
+      { "label": "changelog", "url": "https://appwrite.io/changelog", "waitMs": 5000, "waitUntil": "networkidle" }
     ]
   },
   {
-    "name": "Netlify",
+    "name": "Firebase",
     "urls": [
-      { "label": "pricing", "url": "https://www.netlify.com/pricing/" }
+      {
+        "label": "firestore",
+        "url": "https://cloud.google.com/firestore/docs/release-notes",
+        "waitMs": 6000,
+        "waitUntil": "domcontentloaded",
+        "selector": "article"
+      }
     ]
   },
   {
-    "name": "Railway",
+    "name": "MongoDB",
     "urls": [
-      { "label": "pricing", "url": "https://railway.app/pricing" }
+      {
+        "label": "atlas",
+        "url": "https://www.mongodb.com/docs/atlas/release-notes/changelog/",
+        "waitMs": 10000,
+        "waitUntil": "networkidle",
+        "selector": "main, [role='main']"
+      }
+    ]
+  },
+  {
+    "name": "PocketBase",
+    "urls": [
+      {
+        "label": "releases",
+        "url": "https://github.com/pocketbase/pocketbase/releases",
+        "waitMs": 6000,
+        "waitUntil": "networkidle",
+        "selector": "main"
+      }
+    ]
+  },
+  {
+    "name": "Redis Cloud",
+    "urls": [
+      {
+        "label": "changelog",
+        "url": "https://redis.io/docs/latest/operate/rc/changelog/",
+        "waitMs": 8000,
+        "waitUntil": "domcontentloaded",
+        "selector": "article, main"
+      }
+    ]
+  },
+  {
+    "name": "Supabase",
+    "urls": [
+      { "label": "changelog", "url": "https://supabase.com/changelog", "waitMs": 5000, "waitUntil": "networkidle" }
+    ]
+  },
+  {
+    "name": "Upstash",
+    "urls": [
+      {
+        "label": "changelog",
+        "url": "https://upstash.com/docs/redis/overall/changelog",
+        "waitMs": 6000,
+        "waitUntil": "networkidle",
+        "selector": "article, main"
+      }
     ]
   }
 ]

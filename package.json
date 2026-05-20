@@ -7,6 +7,7 @@
     "scripts": {
         "start": "node src/index.js",
         "run-now": "node src/index.js --now",
+        "ui": "node src/server.js",
         "test": "node src/index.js --now --dry-run"
     },
     "dependencies": {

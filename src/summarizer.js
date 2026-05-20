@@ -1,85 +1,142 @@
-const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://ollama:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3';
+import fs from 'fs/promises';
+import path from 'path';
+import { platformSlug } from './differ.js';
+import { extractiveSummary } from './extractive.js';
+import { isValidSummary } from './summary-utils.js';
+import { ensureOllamaReady, summarizeWithOllama } from './ollama-summarize.js';
 
-export async function summarizeAll(diffs) {
-    const summaries = [];
+const SUMMARY_MODE = (process.env.SUMMARY_MODE || 'fast').toLowerCase();
+const STATE_DIR = '/app/logs/state';
 
-    for (const diff of diffs) {
-        console.log(`[summarizer] Summarizing changes for ${diff.competitor} - ${diff.label}`);
+const useAi = (item) =>
+  SUMMARY_MODE === 'ai' || (SUMMARY_MODE === 'hybrid' && item.hasNewPatch);
 
-        try {
-            const summary = await summarize(diff);
-            summaries.push({...diff, summary});
-        } catch (err) {
-            console.error(`[summarizer] Failed to summarize ${diff.competitor} - ${diff.label}: ${err.message}`);
-            summaries.push({...diff, summaryError: err.message});
-        }
+const statePath = (platform, label) => path.join(STATE_DIR, `${platformSlug(platform, label)}.json`);
+
+export async function summarizeAll(diffResults) {
+  await purgeInvalidCaches();
+
+  let cached = 0;
+  let needsOllama = 0;
+  for (const item of diffResults) {
+    const prev = await loadLastSummary(item.platform, item.label);
+    if (!item.hasNewPatch && !item.isFirstSnapshot && prev?.summary && isValidSummary(prev.summary)) {
+      cached++;
+    } else if (useAi(item)) {
+      needsOllama++;
     }
-    return summaries;
+  }
+
+  const needsWork = diffResults.length - cached;
+  if (cached) console.log(`[summarizer] Cached: ${cached} platform(s).`);
+  if (needsWork) {
+    const fastCount = needsWork - needsOllama;
+    if (fastCount) console.log(`[summarizer] Fast extractive: ${fastCount} platform(s).`);
+    if (needsOllama) {
+      await ensureOllamaReady();
+      console.log(`[summarizer] Ollama: ${needsOllama} platform(s), serial.`);
+    }
+  }
+
+  const results = [];
+  for (const item of diffResults) results.push(await processItem(item));
+  return results;
 }
 
-async function summarize(diff) {
-    const prompt = buildPrompt(diff);
+async function processItem(item) {
+  const name = `${item.platform} - ${item.label}`;
+  try {
+    const lastKnown = await loadLastSummary(item.platform, item.label);
+    const cacheOk =
+      lastKnown?.summary && isValidSummary(lastKnown.summary) && lastKnown.summary.quality === 'good';
 
-    const response = await fetch(`${OLLAMA_HOST}/api/generate`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            model: OLLAMA_MODEL,
-            prompt,
-            stream: false,
-            format: 'json',
-        })
-    });
-
-    if (!response.ok) {
-        throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
+    if (item.hasNewPatch) {
+      console.log(`[summarizer] New patch — ${name}`);
+      const summary = await buildSummary(item, 'patch');
+      await saveLastSummary(item.platform, item.label, summary, summary.release_date || item.date, item.patchFingerprint);
+      return { ...item, noUpdate: false, summary, lastKnown: null };
     }
-    const data = await response.json();
 
+    if (cacheOk && !item.isFirstSnapshot) {
+      console.log(`[summarizer] Cache hit — ${name}`);
+      return { ...item, noUpdate: true, summary: lastKnown.summary, lastKnown };
+    }
+
+    if (!hasEnoughSourceText(item)) {
+      throw new Error(
+        `Scraped text too short (${(item.changelogExcerpt || '').length} chars) — re-run with --fresh`
+      );
+    }
+
+    console.log(`[summarizer] Summarizing — ${name} (${useAi(item) ? 'ai' : 'fast'})`);
+    const summary = await buildSummary(item, 'latest');
+    await saveLastSummary(item.platform, item.label, summary, summary.release_date || item.date, item.patchFingerprint);
+    return { ...item, noUpdate: !item.isFirstSnapshot, summary, lastKnown: null };
+  } catch (err) {
+    console.error(`[summarizer] Failed for ${name}: ${err.message}`);
+    const lastKnown = await loadLastSummary(item.platform, item.label);
+    const fallback = lastKnown?.summary && isValidSummary(lastKnown.summary) ? lastKnown.summary : null;
+    return { ...item, summaryError: err.message, lastKnown, summary: fallback, noUpdate: !item.hasNewPatch };
+  }
+}
+
+async function buildSummary(item, mode) {
+  if (useAi(item)) return summarizeWithOllama(item, mode);
+
+  const summary = extractiveSummary(item);
+  if (summary.quality === 'failed') throw new Error(summary.sentences?.[0] || 'Could not read changelog content');
+  if (!isValidSummary(summary)) throw new Error('Could not extract enough text from changelog — try --fresh');
+  return summary;
+}
+
+function hasEnoughSourceText(item) {
+  if (item.latestRelease?.title?.length > 15) return true;
+  const text = (item.changelogExcerpt || item.addedText || '').trim();
+  return text.length >= 350 && !/404|couldn't find that page|page not found/i.test(text);
+}
+
+async function loadLastSummary(platform, label) {
+  try {
+    return JSON.parse(await fs.readFile(statePath(platform, label), 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+async function saveLastSummary(platform, label, summary, patchDate, patchFingerprint) {
+  if (!isValidSummary(summary)) throw new Error('Refusing to cache invalid summary');
+  await fs.mkdir(STATE_DIR, { recursive: true });
+  await fs.writeFile(
+    statePath(platform, label),
+    JSON.stringify(
+      { platform, label, patchDate, patchFingerprint: patchFingerprint || null, savedAt: new Date().toISOString(), summary },
+      null,
+      2
+    )
+  );
+}
+
+async function purgeInvalidCaches() {
+  let files;
+  try {
+    files = await fs.readdir(STATE_DIR);
+  } catch {
+    return;
+  }
+  for (const file of files) {
+    if (!file.endsWith('.json')) continue;
     try {
-        return JSON.parse(data.response);
-    } catch  {
-
-      return {
-        summary: data.response,
-        significance: 'unknown',
-        action_items: [],
-      };
-    } 
+      const data = JSON.parse(await fs.readFile(path.join(STATE_DIR, file), 'utf-8'));
+      if (!isValidSummary(data.summary)) {
+        await fs.unlink(path.join(STATE_DIR, file));
+        console.log(`[summarizer] Removed invalid cache: ${file}`);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
-function buildPrompt(diff) {
-    const lines = [];
-
-    lines.push(`You are a product analyst monitoring changes on each competitor's website.\n`)
-    lines.push(`The following changes were detected on ${diff.competitor}'s page - ${diff.label} (${diff.url}):\n`);
-        lines.push(`Previous snapshot date: ${diff.previousDate}. Current snapshot date: ${diff.date}.\n`);
-    lines.push('');
-
-    if (diff.removedText) {
-        lines.push('Removed Text:');
-        lines.push(diff.removedText.slice(0, 5000)); // Limit to first 5000 chars
-        lines.push('');
-    }
-
-    if (diff.addedText) {
-        lines.push('Added Text:');
-        lines.push(diff.addedText.slice(0, 5000));
-        lines.push('');
-    }
-
-    lines.push(`Analyze these changes from a business/competitive intelligence perspective.
-                Respond ONLY with a valid JSON object (no markdown, no explanation) with these fields:
-                {
-                    summary: 2-3 sentence plain English summary of what changed,
-                    significance: Low, Medium, or High (Based on how much is the importance in the business),
-                    reasoning:  Why does this matter competitively
-                    action_items: A list of recommended action, action items: [action 1, action 2]
-                }
-    `);
-
-    return lines.join('\n');
-}
+// Re-export for tests or future callers
+export { isValidSummary } from './summary-utils.js';
+export { loadLastSummary };
