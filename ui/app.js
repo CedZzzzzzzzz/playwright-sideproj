@@ -35,7 +35,7 @@ function populateDates(list) {
 async function loadReport(date) {
   content.innerHTML = `
     <div class="loading">
-      <div class="spinner"></div>
+      <div class="loading-bar"><span></span></div>
       <p>Loading ${escapeHtml(date)}…</p>
     </div>
   `;
@@ -58,51 +58,68 @@ function renderReport(data) {
   statGenerated.textContent = formatGenerated(data.generatedAt);
   stats.hidden = false;
 
-  const cards = (data.platforms || []).map(renderCard).join('');
+  const platforms = data.platforms || [];
+  const cards = platforms.map((p, i) => renderCard(p, i + 1)).join('');
   content.innerHTML = `<div class="platform-grid">${cards}</div>`;
 }
 
-function renderCard(p) {
+function renderCard(p, position) {
   const isNew = p.hasNewPatch || p.status === 'new';
   const impact = (p.significance || 'low').toLowerCase();
   const classes = ['platform-card'];
   if (isNew) classes.push('is-new');
   if (p.error) classes.push('has-error');
 
-  const statusBadge = isNew
-    ? '<span class="badge badge-new">New patch</span>'
-    : '<span class="badge badge-steady">No update</span>';
+  const pos = String(position).padStart(2, '0');
 
-  const impactBadge = `<span class="badge badge-impact ${impact}">${impact} impact</span>`;
+  const statusBadge = isNew
+    ? '<span class="badge badge-new">New</span>'
+    : '<span class="badge badge-steady">Steady</span>';
+
+  const impactBadge = `<span class="badge badge-impact ${impact}">${impact}</span>`;
+
+  const sectorDots = ['high', 'medium', 'low']
+    .map((level) => `<span class="sector-dot ${level === impact ? level : ''}"></span>`)
+    .join('');
 
   const sentences =
     p.sentences?.length > 0
-      ? `<ul class="updates">${p.sentences.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ul>`
+      ? `<ul class="updates">${p.sentences
+          .map((s, i) => `<li data-lap="S${i + 1}">${escapeHtml(s)}</li>`)
+          .join('')}</ul>`
       : '';
 
   const body = p.error
     ? `<p class="card-error">${escapeHtml(p.error)}</p>`
     : `
-      <p class="latest-label">Latest release</p>
-      <p class="latest-title">${escapeHtml(p.latestTitle || 'See changelog')}</p>
+      <div class="card-release">
+        <p class="latest-label">Latest release</p>
+        <p class="latest-title">${escapeHtml(p.latestTitle || 'See changelog')}</p>
+      </div>
       ${sentences}
     `;
 
   const link = p.url
-    ? `<a class="card-link" href="${escapeHtml(p.url)}" target="_blank" rel="noopener">View changelog →</a>`
+    ? `<a class="card-link" href="${escapeHtml(p.url)}" target="_blank" rel="noopener">Changelog</a>`
     : '';
 
   return `
     <article class="${classes.join(' ')}">
-      <div class="card-top">
-        <div>
-          <h2 class="card-title">${escapeHtml(p.platform)}</h2>
-          ${p.label ? `<p class="card-meta">${escapeHtml(p.label)}</p>` : ''}
-        </div>
-        <div class="badges">${statusBadge}${impactBadge}</div>
+      <div class="card-rail">
+        <span class="card-pos">${pos}</span>
+        <div class="sector-dots" title="Impact: ${impact}">${sectorDots}</div>
       </div>
-      ${body}
-      ${link}
+      <div class="card-body">
+        <div class="card-top">
+          <div>
+            <h2 class="card-title">${escapeHtml(p.platform)}</h2>
+            ${p.label ? `<p class="card-meta">${escapeHtml(p.label)}</p>` : ''}
+          </div>
+          <div class="badges">${statusBadge}${impactBadge}</div>
+        </div>
+        ${body}
+        ${link}
+      </div>
     </article>
   `;
 }
