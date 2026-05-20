@@ -1,9 +1,9 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { buildReportPayload } from './report-data.js';
+import { isDiscordConfigured, sendDiscordDigest } from './discord.js';
 
 const LOGS_DIR = process.env.LOGS_DIR || path.join(process.cwd(), 'logs');
-const WEBHOOK_URL = process.env.WEBHOOK_URL || '';
 
 const FILLER = /see the full changelog|further details were not available/i;
 
@@ -19,8 +19,8 @@ export async function report(summaries) {
   const payload = buildReportPayload(summaries, date);
   await saveReport(markdown, payload, date);
 
-  if (WEBHOOK_URL) {
-    await sendWebhook(summaries, date);
+  if (isDiscordConfigured()) {
+    await sendDiscordDigest(summaries, date);
   }
 
   const updated = summaries.filter((s) => s.hasNewPatch && s.summary).length;
@@ -133,27 +133,4 @@ async function saveReport(markdown, payload, date) {
   await fs.writeFile(jsonPath, JSON.stringify(payload, null, 2));
   console.log(`[reporter] Markdown report → ${mdPath}`);
   console.log(`[reporter] JSON report → ${jsonPath}`);
-}
-
-async function sendWebhook(summaries, date) {
-  const blocks = summaries.map((item) => {
-    const platform = item.platform || item.competitor;
-    const s = item.summary || item.lastKnown?.summary;
-    const sentences = pickSentences(s);
-    const body = sentences.map((b) => `• ${b}`).join('\n') || 'No summary.';
-    const tag = item.hasNewPatch ? 'NEW' : 'No update';
-    return `📦 **${platform}** (${tag})\n${body}`;
-  });
-
-  try {
-    await fetch(WEBHOOK_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        content: [`📋 **Patch Notes — ${date}**`, '', ...blocks].join('\n\n'),
-      }),
-    });
-  } catch (err) {
-    console.error(`[reporter] Webhook failed: ${err.message}`);
-  }
 }
